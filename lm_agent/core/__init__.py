@@ -1,7 +1,7 @@
 """
 Core module for LM Agent.
 
-Provides configuration, memory, and planning components.
+Provides configuration, memory, planning components and role engine.
 """
 
 from .config import (
@@ -29,6 +29,12 @@ from .planning import (
     StepStatus
 )
 
+from .roles import (
+    RoleEngine,
+    RoleDefinition,
+    RoleCategory
+)
+
 __all__ = [
     # Config
     "ProgressEntry",
@@ -51,4 +57,9 @@ __all__ = [
     "Plan",
     "PlanStep",
     "StepStatus",
+    
+    # Roles
+    "RoleEngine",
+    "RoleDefinition",
+    "RoleCategory",
 ]

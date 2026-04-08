@@ -113,9 +113,9 @@ def run_gui_mode():
         print("[✗] Tkinter не доступен. Установите python3-tk")
         return False
     
-    # Здесь будет инициализация GUI
-    print("\n[TODO] GUI интерфейс в разработке")
-    print("Используйте CLI режим пока GUI не готов")
+    # Запуск полноценного GUI
+    from lm_agent.gui.app import run_gui
+    run_gui()
     
     return True
 
