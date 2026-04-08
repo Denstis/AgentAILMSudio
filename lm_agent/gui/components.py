@@ -35,25 +35,18 @@ class ModelSettingsFrame(ttk.LabelFrame):
         
         # Название модели
         ttk.Label(self, text="Модель:").grid(row=1, column=0, sticky=tk.W, pady=5)
-        self.model_name_var = tk.StringVar(value="codellama-7b")
+        self.model_name_var = tk.StringVar(value="")
         self.model_name_entry = ttk.Combobox(
             self, 
             textvariable=self.model_name_var,
-            values=[
-                "codellama-7b",
-                "codellama-13b", 
-                "codellama-34b",
-                "llama-2-7b",
-                "llama-2-13b",
-                "mistral-7b",
-                "mixtral-8x7b",
-                "gemma-7b",
-                "qwen-7b",
-                "yi-34b"
-            ],
-            width=47
+            values=[],  # Пустой список - будет заполнен из LM Studio
+            width=47,
+            state="readonly"
         )
         self.model_name_entry.grid(row=1, column=1, sticky=(tk.W, tk.E), pady=5, padx=5)
+        
+        # Кнопка обновления списка моделей
+        ttk.Button(self, text="🔄 Обновить", command=self._refresh_models).grid(row=1, column=2, pady=5, padx=5)
         
         # Температура
         ttk.Label(self, text="Temperature:").grid(row=2, column=0, sticky=tk.W, pady=5)
@@ -190,6 +183,42 @@ class ModelSettingsFrame(ttk.LabelFrame):
             self.top_p_var.set(0.9)
             self.freq_penalty_var.set(0.5)
             self.timeout_var.set(120)
+
+    def _refresh_models(self):
+        """Обновить список моделей из LM Studio."""
+        from lm_agent.api.lmstudio import LMStudioClient, LMStudioAPIError
+        
+        base_url = self.base_url_var.get()
+        
+        try:
+            client = LMStudioClient(base_url=base_url)
+            models = client.list_models(force_refresh=True)
+            
+            available_models = [model.id for model in models.models]
+            
+            # Обновляем combobox с реальными моделями
+            self.model_name_entry['values'] = available_models
+            
+            if available_models:
+                self.model_name_var.set(available_models[0])
+                msg = "Найдено моделей: {}\n\n{}".format(
+                    len(available_models),
+                    "\n".join(available_models[:10]) + ("\n..." if len(available_models) > 10 else "")
+                )
+                messagebox.showinfo("Модели обновлены", msg)
+            else:
+                self.model_name_var.set("")
+                messagebox.showwarning("Нет моделей", 
+                    "LM Studio не вернул список моделей.\n"
+                    "Убедитесь, что модели загружены в LM Studio.")
+                
+        except LMStudioAPIError as e:
+            messagebox.showerror("Ошибка подключения", 
+                "Не удалось подключиться к серверу:\n{}\n\nURL: {}\nУбедитесь, что LM Studio запущен".format(e, base_url))
+        except Exception as e:
+            messagebox.showerror("Ошибка", 
+                "Ошибка при обновлении списка моделей:\n{}".format(e))
+
     
     def _test_connection(self):
         """Проверить подключение к LLM серверу."""
@@ -251,6 +280,354 @@ class ModelSettingsFrame(ttk.LabelFrame):
             self.freq_penalty_var.set(settings["frequency_penalty"])
         if "timeout" in settings:
             self.timeout_var.set(settings["timeout"])
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Компонент: Конфигуратор ролей и системного промпта
+# ─────────────────────────────────────────────────────────────────────────────
+class RoleConfigFrame(ttk.LabelFrame):
+    """Фрейм конфигурации ролей и системного промпта."""
+    
+    def __init__(self, parent, **kwargs):
+        super().__init__(parent, text="🎭 Роли и Системный Промпт", **kwargs)
+        
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(2, weight=1)
+        
+        # Верхняя панель с выбором роли
+        top_frame = ttk.Frame(self)
+        top_frame.grid(row=0, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        top_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(top_frame, text="Выберите роль:", font=('Helvetica', 10, 'bold')).grid(row=0, column=0, sticky=tk.W, pady=5)
+        
+        # Выпадающий список ролей
+        self.role_var = tk.StringVar()
+        self.role_combo = ttk.Combobox(
+            top_frame,
+            textvariable=self.role_var,
+            state="readonly",
+            width=40
+        )
+        self.role_combo.grid(row=0, column=1, sticky=(tk.W, tk.E), pady=5, padx=10)
+        self.role_combo.bind('<<ComboboxSelected>>', self._on_role_selected)
+        
+        ttk.Button(top_frame, text="🔄 Обновить", command=self._load_roles).grid(row=0, column=2, pady=5, padx=5)
+        
+        # Панель с информацией о роли
+        info_frame = ttk.LabelFrame(self, text="ℹ️ Информация о роли")
+        info_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        info_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(info_frame, text="Название:").grid(row=0, column=0, sticky=tk.W, pady=3)
+        self.role_name_label = ttk.Label(info_frame, text="-", font=('Helvetica', 10, 'bold'))
+        self.role_name_label.grid(row=0, column=1, sticky=tk.W, pady=3)
+        
+        ttk.Label(info_frame, text="Категория:").grid(row=1, column=0, sticky=tk.W, pady=3)
+        self.role_category_label = ttk.Label(info_frame, text="-")
+        self.role_category_label.grid(row=1, column=1, sticky=tk.W, pady=3)
+        
+        ttk.Label(info_frame, text="Описание:").grid(row=2, column=0, sticky=tk.W, pady=3)
+        self.role_desc_label = ttk.Label(info_frame, text="-", wraplength=600)
+        self.role_desc_label.grid(row=2, column=1, sticky=tk.W, pady=3)
+        
+        # Навыки роли
+        skills_frame = ttk.LabelFrame(self, text="🛠️ Навыки и Инструменты")
+        skills_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        
+        self.skills_text = scrolledtext.ScrolledText(
+            skills_frame,
+            height=4,
+            wrap=tk.WORD,
+            font=('Consolas', 9),
+            state=tk.DISABLED
+        )
+        self.skills_text.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Ограничения
+        constraints_frame = ttk.LabelFrame(self, text="⚠️ Ограничения")
+        constraints_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        
+        self.constraints_text = scrolledtext.ScrolledText(
+            constraints_frame,
+            height=3,
+            wrap=tk.WORD,
+            font=('Consolas', 9),
+            state=tk.DISABLED
+        )
+        self.constraints_text.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Системный промпт
+        prompt_frame = ttk.LabelFrame(self, text="📝 Системный Промпт")
+        prompt_frame.grid(row=2, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=5, padx=5)
+        prompt_frame.columnconfigure(0, weight=1)
+        prompt_frame.rowconfigure(1, weight=1)
+        
+        # Кнопки управления промптом
+        prompt_btn_frame = ttk.Frame(prompt_frame)
+        prompt_btn_frame.grid(row=0, column=0, sticky=tk.E, pady=5)
+        
+        ttk.Button(prompt_btn_frame, text="📋 Копировать", command=self._copy_prompt).pack(side=tk.LEFT, padx=5)
+        ttk.Button(prompt_btn_frame, text="💾 Сохранить", command=self._save_prompt).pack(side=tk.LEFT, padx=5)
+        ttk.Button(prompt_btn_frame, text="📂 Загрузить", command=self._load_prompt).pack(side=tk.LEFT, padx=5)
+        ttk.Button(prompt_btn_frame, text="✏️ Редактировать", command=self._edit_prompt).pack(side=tk.LEFT, padx=5)
+        
+        # Текст системного промпта
+        self.system_prompt_text = scrolledtext.ScrolledText(
+            prompt_frame,
+            wrap=tk.WORD,
+            font=('Consolas', 10),
+            state=tk.DISABLED,
+            height=15
+        )
+        self.system_prompt_text.grid(row=1, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        
+        # Теги для подсветки
+        self.system_prompt_text.tag_configure('section', font=('Consolas', 10, 'bold'), foreground='blue')
+        self.system_prompt_text.tag_configure('item', foreground='green')
+        
+        # Панель с доступными инструментами
+        tools_frame = ttk.LabelFrame(self, text="🧰 Доступные Инструменты")
+        tools_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=5, padx=5)
+        
+        self.tools_text = scrolledtext.ScrolledText(
+            tools_frame,
+            height=5,
+            wrap=tk.WORD,
+            font=('Consolas', 9),
+            state=tk.DISABLED
+        )
+        self.tools_text.pack(fill=tk.X, padx=5, pady=5)
+        
+        # Загрузка ролей при инициализации
+        self._load_roles()
+    
+    def _load_roles(self):
+        """Загрузить список доступных ролей."""
+        from lm_agent.core.roles import RoleEngine
+        
+        try:
+            self.role_engine = RoleEngine()
+            roles = self.role_engine.list_roles()
+            
+            # Создаем словарь ролей для быстрого доступа
+            self.roles_dict = {role.id: role for role in roles}
+            
+            # Заполняем combobox
+            role_items = [f"{role.name} ({role.id})" for role in roles]
+            self.role_combo['values'] = role_items
+            
+            if role_items:
+                self.role_combo.current(0)
+                self._on_role_selected(None)
+                
+        except Exception as e:
+            messagebox.showerror("Ошибка", f"Не удалось загрузить роли: {e}")
+            self.roles_dict = {}
+    
+    def _on_role_selected(self, event):
+        """Обработчик выбора роли."""
+        selected = self.role_var.get()
+        if not selected:
+            return
+        
+        # Извлекаем ID роли из строки "Name (id)"
+        try:
+            role_id = selected.split('(')[-1].strip(')')
+        except:
+            role_id = selected
+        
+        role = self.roles_dict.get(role_id)
+        if not role:
+            return
+        
+        # Обновляем информацию о роли
+        self.role_name_label.config(text=role.name)
+        self.role_category_label.config(text=role.category.value if role.category else "custom")
+        self.role_desc_label.config(text=role.description)
+        
+        # Обновляем навыки
+        self.skills_text.config(state=tk.NORMAL)
+        self.skills_text.delete(1.0, tk.END)
+        if role.skills:
+            skills_str = "\n".join([f"• {skill}" for skill in role.skills])
+            self.skills_text.insert(tk.END, skills_str)
+        else:
+            self.skills_text.insert(tk.END, "Нет специфических навыков")
+        self.skills_text.config(state=tk.DISABLED)
+        
+        # Обновляем ограничения
+        self.constraints_text.config(state=tk.NORMAL)
+        self.constraints_text.delete(1.0, tk.END)
+        if role.constraints:
+            constraints_str = "\n".join([f"⚠ {constraint}" for constraint in role.constraints])
+            self.constraints_text.insert(tk.END, constraints_str)
+        else:
+            self.constraints_text.insert(tk.END, "Нет специфических ограничений")
+        self.constraints_text.config(state=tk.DISABLED)
+        
+        # Обновляем системный промпт
+        self.system_prompt_text.config(state=tk.NORMAL)
+        self.system_prompt_text.delete(1.0, tk.END)
+        self.system_prompt_text.insert(tk.END, role.system_prompt)
+        self.system_prompt_text.config(state=tk.DISABLED)
+        
+        # Обновляем доступные инструменты для роли
+        self._update_tools_for_role(role)
+    
+    def _update_tools_for_role(self, role):
+        """Обновить список доступных инструментов для роли."""
+        self.tools_text.config(state=tk.NORMAL)
+        self.tools_text.delete(1.0, tk.END)
+        
+        # Определяем инструменты на основе категории роли и навыков
+        available_tools = []
+        
+        # Базовые инструменты для всех ролей
+        base_tools = [
+            ("file_read", "Чтение файлов - открытие и чтение содержимого файлов"),
+            ("file_write", "Запись файлов - создание и модификация файлов"),
+            ("file_search", "Поиск файлов - поиск по маске и содержимому"),
+        ]
+        
+        # Специфические инструменты по категориям
+        category_tools = {
+            "development": [
+                ("code_lint", "Линтинг кода - проверка кода на ошибки и стиль"),
+                ("code_format", "Форматирование кода - автоформатирование Python кода"),
+                ("unit_test", "Генерация тестов - создание unit тестов"),
+            ],
+            "analysis": [
+                ("code_lint", "Линтинг кода - статический анализ кода"),
+                ("code_review", "Ревью кода - анализ качества кода"),
+            ],
+            "testing": [
+                ("unit_test", "Генерация тестов - создание и запуск тестов"),
+                ("code_lint", "Проверка кода - валидация тестов"),
+            ],
+            "security": [
+                ("code_lint", "Анализ безопасности - поиск уязвимостей"),
+                ("security_audit", "Аудит безопасности - комплексная проверка"),
+            ],
+            "documentation": [
+                ("file_read", "Чтение кода - анализ для документации"),
+                ("file_write", "Запись документации - создание docs"),
+            ],
+            "architecture": [
+                ("file_search", "Аназ структуры - изучение кодовой базы"),
+                ("file_read", "Чтение кода - понимание архитектуры"),
+            ]
+        }
+        
+        # Добавляем базовые инструменты
+        available_tools.extend(base_tools)
+        
+        # Добавляем специфические инструменты для категории
+        if role.category and role.category.value in category_tools:
+            available_tools.extend(category_tools[role.category.value])
+        
+        # Добавляем инструменты на основе навыков
+        skill_tools_map = {
+            "Python": [("file_read", "Работа с Python файлами")],
+            "JavaScript": [("file_read", "Работа с JS файлами")],
+            "SQL": [("database_query", "Выполнение SQL запросов")],
+            "Testing": [("unit_test", "Создание тестов")],
+            "Security Audit": [("security_scan", "Проверка безопасности")],
+        }
+        
+        for skill in role.skills:
+            for skill_key, tool_info in skill_tools_map.items():
+                if skill_key.lower() in skill.lower():
+                    for tool_id, tool_desc in tool_info:
+                        if not any(t[0] == tool_id for t in available_tools):
+                            available_tools.append((tool_id, tool_desc))
+        
+        # Вывод инструментов
+        tools_str = "Для этой роли доступны следующие инструменты:\n\n"
+        for tool_id, tool_desc in available_tools:
+            tools_str += f"🔧 {tool_id}: {tool_desc}\n"
+        
+        tools_str += "\n" + "="*60 + "\n"
+        tools_str += "ПРИМЕР ИСПОЛЬЗОВАНИЯ:\n"
+        tools_str += "Когда пользователь говорит 'Проверь код в файле example.py':\n"
+        tools_str += "1. Использовать file_read для открытия файла\n"
+        tools_str += "2. Использовать code_lint для проверки кода\n"
+        tools_str += "3. Предложить исправления基于结果\n"
+        
+        self.tools_text.insert(tk.END, tools_str)
+        self.tools_text.config(state=tk.DISABLED)
+    
+    def _copy_prompt(self):
+        """Копировать системный промпт в буфер обмена."""
+        prompt = self.system_prompt_text.get(1.0, tk.END).strip()
+        self.clipboard_clear()
+        self.clipboard_append(prompt)
+        messagebox.showinfo("Копировано", "Системный промпт скопирован в буфер обмена")
+    
+    def _save_prompt(self):
+        """Сохранить системный промпт в файл."""
+        prompt = self.system_prompt_text.get(1.0, tk.END).strip()
+        file_path = filedialog.asksaveasfilename(
+            defaultextension=".txt",
+            filetypes=[("Текстовые файлы", "*.txt"), ("Все файлы", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, 'w', encoding='utf-8') as f:
+                    f.write(prompt)
+                messagebox.showinfo("Успех", f"Промпт сохранен в {file_path}")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось сохранить: {e}")
+    
+    def _load_prompt(self):
+        """Загрузить системный промпт из файла."""
+        file_path = filedialog.askopenfilename(
+            filetypes=[("Текстовые файлы", "*.txt"), ("Все файлы", "*.*")]
+        )
+        if file_path:
+            try:
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    prompt = f.read()
+                self.system_prompt_text.config(state=tk.NORMAL)
+                self.system_prompt_text.delete(1.0, tk.END)
+                self.system_prompt_text.insert(tk.END, prompt)
+                self.system_prompt_text.config(state=tk.DISABLED)
+                messagebox.showinfo("Успех", "Промпт загружен")
+            except Exception as e:
+                messagebox.showerror("Ошибка", f"Не удалось загрузить: {e}")
+    
+    def _edit_prompt(self):
+        """Редактировать системный промпт."""
+        # Создаем диалоговое окно для редактирования
+        edit_dialog = tk.Toplevel(self)
+        edit_dialog.title("Редактирование системного промпта")
+        edit_dialog.geometry("700x500")
+        
+        text_widget = scrolledtext.ScrolledText(
+            edit_dialog,
+            wrap=tk.WORD,
+            font=('Consolas', 10),
+            height=25
+        )
+        text_widget.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Загружаем текущий промпт
+        current_prompt = self.system_prompt_text.get(1.0, tk.END).strip()
+        text_widget.insert(tk.END, current_prompt)
+        
+        def save_changes():
+            new_prompt = text_widget.get(1.0, tk.END).strip()
+            self.system_prompt_text.config(state=tk.NORMAL)
+            self.system_prompt_text.delete(1.0, tk.END)
+            self.system_prompt_text.insert(tk.END, new_prompt)
+            self.system_prompt_text.config(state=tk.DISABLED)
+            edit_dialog.destroy()
+            messagebox.showinfo("Успех", "Изменения сохранены")
+        
+        btn_frame = ttk.Frame(edit_dialog)
+        btn_frame.pack(pady=10)
+        ttk.Button(btn_frame, text="💾 Сохранить", command=save_changes).pack(side=tk.LEFT, padx=10)
+        ttk.Button(btn_frame, text="❌ Отмена", command=edit_dialog.destroy).pack(side=tk.LEFT, padx=10)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -947,5 +1324,6 @@ __all__ = [
     'SandboxConfigFrame', 
     'ToolsPanelFrame',
     'TaskManagerFrame',
-    'ConsoleOutputFrame'
+    'ConsoleOutputFrame',
+    'RoleConfigFrame'
 ]
