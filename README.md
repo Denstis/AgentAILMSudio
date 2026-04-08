@@ -1,4 +1,4 @@
-# LM Studio + LangChain Code Agent GUI v12.0.0
+# LM Studio + LangChain Code Agent GUI v0.1
 
 🤖 **Интеллектуальный агент для генерации и выполнения кода с GUI-интерфейсом**
 
