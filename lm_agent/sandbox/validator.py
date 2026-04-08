@@ -54,8 +54,8 @@ def safe_path(path: str, base: Path) -> Optional[Path]:
             resolved = path_obj.resolve(strict=False)
             try:
                 resolved.relative_to(base_resolved)
-                # Возвращаем путь с прямыми слешами для кроссплатформенности
-                return Path(resolved.as_posix())
+                # Возвращаем строку с прямыми слешами для кроссплатформенности
+                return resolved.as_posix()
             except ValueError:
                 return None
         
@@ -65,9 +65,8 @@ def safe_path(path: str, base: Path) -> Optional[Path]:
         # Проверяем что результат внутри base
         try:
             resolved.relative_to(base_resolved)
-            # Возвращаем путь с прямыми слешами для кроссплатформенности
-            # Используем as_posix() и создаем Path с posixpath для кроссплатформенности
-            return Path(resolved.as_posix())
+            # Возвращаем строку с прямыми слешами для кроссплатформенности
+            return resolved.as_posix()
         except ValueError:
             return None
             

@@ -17,7 +17,8 @@ from lm_agent.gui.components import (
     SandboxConfigFrame,
     ToolsPanelFrame,
     TaskManagerFrame,
-    ConsoleOutputFrame
+    ConsoleOutputFrame,
+    RoleConfigFrame
 )
 
 
@@ -195,31 +196,37 @@ class LMAgentGUI:
         self.model_settings = ModelSettingsFrame(model_frame)
         self.model_settings.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка 3: Песочница
+        # Вкладка 3: Роли и Системный Промпт (НОВАЯ)
+        role_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(role_frame, text="🎭 Роли")
+        self.role_config = RoleConfigFrame(role_frame)
+        self.role_config.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
+        
+        # Вкладка 4: Песочница
         sandbox_frame = ttk.Frame(self.main_notebook)
         self.main_notebook.add(sandbox_frame, text="🔒 Песочница")
         self.sandbox_config = SandboxConfigFrame(sandbox_frame)
         self.sandbox_config.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка 4: Инструменты
+        # Вкладка 5: Инструменты
         tools_frame = ttk.Frame(self.main_notebook)
         self.main_notebook.add(tools_frame, text="🧰 Инструменты")
         self.tools_panel = ToolsPanelFrame(tools_frame)
         self.tools_panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка 5: Менеджер задач
+        # Вкладка 6: Менеджер задач
         tasks_frame = ttk.Frame(self.main_notebook)
         self.main_notebook.add(tasks_frame, text="📋 Задачи")
         self.task_manager = TaskManagerFrame(tasks_frame)
         self.task_manager.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка 6: Консоль и логи
+        # Вкладка 7: Консоль и логи
         console_frame = ttk.Frame(self.main_notebook)
         self.main_notebook.add(console_frame, text="📊 Консоль")
         self.console_output = ConsoleOutputFrame(console_frame)
         self.console_output.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
-        # Вкладка 7: О системе
+        # Вкладка 8: О системе
         about_frame = ttk.Frame(self.main_notebook)
         self.main_notebook.add(about_frame, text="ℹ️ О системе")
         self._create_about_tab(about_frame)
