@@ -1,0 +1,36 @@
+# LM Agent - Обновлённые зависимости
+
+# Core LangChain
+langchain>=1.2.15
+langchain-openai>=1.1.12
+langchain-core>=0.3.0
+
+# Data validation
+pydantic>=2.0.0
+
+# HTTP requests
+requests>=2.28.0
+
+# Configuration
+pyyaml>=6.0
+python-dotenv>=1.0.0
+
+# Testing (опционально)
+pytest>=7.0.0
+pytest-cov>=4.0.0
+
+# Code quality (опционально)
+# black>=23.0.0
+# ruff>=0.1.0
+# mypy>=1.0.0
+
+# GUI improvements (опционально)
+# ttkbootstrap>=1.10.0
+# customtkinter>=5.0.0
+
+# Async support (опционально)
+# aiohttp>=3.8.0
+
+# Advanced parsing (опционально)
+# beautifulsoup4>=4.11.0
+# lxml>=4.9.0

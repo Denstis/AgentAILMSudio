@@ -1,39 +1,58 @@
+```
 # Python
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
 
-# Logs and temp files
+# Virtual environments
+venv/
+ENV/
+env.bak/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Logs
 *.log
-*.tmp
 
-# Environment
+# Environment variables
 .env
 .env.local
-*.env.*
+*.env*
 
-# Editors
+# IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
+*.tmp
 
-# Dependencies
-.venv/
-venv/
-node_modules/
-
-# Build artifacts
-dist/
-build/
-target/
-
-# OS files
+# OS
 .DS_Store
 Thumbs.db
 
-# LM Agent specific
-.lm_agent/
-*.egg-info/
+# Coverage
+.coverage*
+```
