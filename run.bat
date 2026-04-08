@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ============================================
-echo LM Agent - Установка и запуск
+echo LM Agent - Модульная система v0.2.0
 echo ============================================
 echo.
 
@@ -79,6 +79,6 @@ echo ============================================
 echo Запуск LM Agent...
 echo ============================================
 echo.
-python Agent10.py
+python main.py --gui
 
 pause
