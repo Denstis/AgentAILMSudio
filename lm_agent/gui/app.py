@@ -42,6 +42,10 @@ class LMAgentGUI:
         # Загрузка конфигурации
         self.config = self._load_default_config()
         
+        # Инициализация клиента LM Studio
+        self.lm_client = None
+        self.available_models = []
+        
         # Настройка стиля
         self._setup_styles()
         
@@ -165,15 +169,8 @@ class LMAgentGUI:
         
         # Выбор модели
         ttk.Label(toolbar, text="Модель:").pack(side=tk.LEFT, padx=5)
-        self.model_combo = ttk.Combobox(toolbar, values=[
-            "codellama-7b",
-            "codellama-13b",
-            "codellama-34b",
-            "llama-2-7b",
-            "mistral-7b",
-            "mixtral-8x7b"
-        ], width=20, state="readonly")
-        self.model_combo.set("codellama-7b")
+        self.model_combo = ttk.Combobox(toolbar, values=[], width=20, state="readonly")
+        self.model_combo.set("")
         self.model_combo.pack(side=tk.LEFT, padx=5)
         
         # Статус подключения
@@ -184,47 +181,47 @@ class LMAgentGUI:
     
     def _create_main_notebook(self):
         """Создание основного контейнера с вкладками."""
-        notebook = ttk.Notebook(self.root)
-        notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.main_notebook = ttk.Notebook(self.root)
+        self.main_notebook.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
         
         # Вкладка 1: Рабочая область
-        workspace_frame = ttk.Frame(notebook)
-        notebook.add(workspace_frame, text="📝 Рабочая область")
+        workspace_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(workspace_frame, text="📝 Рабочая область")
         self._create_workspace_tab(workspace_frame)
         
         # Вкладка 2: Настройки модели
-        model_frame = ttk.Frame(notebook)
-        notebook.add(model_frame, text="🤖 Модель")
+        model_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(model_frame, text="🤖 Модель")
         self.model_settings = ModelSettingsFrame(model_frame)
         self.model_settings.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Вкладка 3: Песочница
-        sandbox_frame = ttk.Frame(notebook)
-        notebook.add(sandbox_frame, text="🔒 Песочница")
+        sandbox_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(sandbox_frame, text="🔒 Песочница")
         self.sandbox_config = SandboxConfigFrame(sandbox_frame)
         self.sandbox_config.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Вкладка 4: Инструменты
-        tools_frame = ttk.Frame(notebook)
-        notebook.add(tools_frame, text="🧰 Инструменты")
+        tools_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(tools_frame, text="🧰 Инструменты")
         self.tools_panel = ToolsPanelFrame(tools_frame)
         self.tools_panel.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Вкладка 5: Менеджер задач
-        tasks_frame = ttk.Frame(notebook)
-        notebook.add(tasks_frame, text="📋 Задачи")
+        tasks_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(tasks_frame, text="📋 Задачи")
         self.task_manager = TaskManagerFrame(tasks_frame)
         self.task_manager.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Вкладка 6: Консоль и логи
-        console_frame = ttk.Frame(notebook)
-        notebook.add(console_frame, text="📊 Консоль")
+        console_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(console_frame, text="📊 Консоль")
         self.console_output = ConsoleOutputFrame(console_frame)
         self.console_output.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
         
         # Вкладка 7: О системе
-        about_frame = ttk.Frame(notebook)
-        notebook.add(about_frame, text="ℹ️ О системе")
+        about_frame = ttk.Frame(self.main_notebook)
+        self.main_notebook.add(about_frame, text="ℹ️ О системе")
         self._create_about_tab(about_frame)
     
     def _create_workspace_tab(self, parent):
@@ -451,45 +448,62 @@ class LMAgentGUI:
         thread.start()
     
     def _execute_task(self, task: str):
-        """Выполнение задачи в фоновом потоке."""
+        """Выполнение задачи в фоновом потоке с использованием LM Studio API."""
         try:
             # Этапы выполнения
-            steps = [
-                ("🔄 Анализ задачи...", 'info', 10),
-                ("📚 Поиск контекста...", 'info', 25),
-                ("🧠 Генерация решения...", 'info', 50),
-                ("✅ Проверка результата...", 'info', 75),
-                ("💾 Форматирование вывода...", 'info', 90),
+            self.message_queue.put(("console", "🔄 Анализ задачи...", 'info'))
+            self.message_queue.put(("progress", 10, None))
+            
+            # Проверка подключения и наличия модели
+            if not self.lm_client or not self.available_models:
+                raise Exception("Не подключено к LM Studio. Нажмите 'Подключить' для загрузки моделей.")
+            
+            selected_model = self.model_combo.get()
+            if not selected_model:
+                raise Exception("Модель не выбрана. Выберите модель из списка после подключения.")
+            
+            self.message_queue.put(("console", f"📚 Используемая модель: {selected_model}", 'info'))
+            self.message_queue.put(("progress", 25, None))
+            
+            # Формирование запроса к API
+            messages = [
+                {"role": "system", "content": "Ты интеллектуальный помощник для генерации кода. Отвечай точно и по делу."},
+                {"role": "user", "content": task}
             ]
             
-            for message, level, progress in steps:
-                self.message_queue.put(("console", message, level))
-                self.message_queue.put(("progress", progress, None))
-                import time
-                time.sleep(0.5)
+            self.message_queue.put(("console", "🧠 Отправка запроса к модели...", 'info'))
+            self.message_queue.put(("progress", 50, None))
             
-            # Пример ответа
+            # Выполнение запроса через реальный API
+            response_data = self.lm_client.chat_completion(
+                model=selected_model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
+            )
+            
+            # Извлечение ответа
+            assistant_message = response_data.get('choices', [{}])[0].get('message', {}).get('content', '')
+            
+            if not assistant_message:
+                raise Exception("Пустой ответ от модели")
+            
+            self.message_queue.put(("progress", 75, None))
+            
+            # Форматирование вывода
             response = f"""
 ✅ Задача выполнена успешно!
 
 📝 Входная задача:
 {task}
 
-💡 Решение:
-```python
-def solution():
-    \"\"\"Пример сгенерированного кода.\"\"\"
-    print("Hello from LM Agent!")
-    return True
-
-if __name__ == "__main__":
-    solution()
-```
+💡 Ответ модели ({selected_model}):
+{assistant_message}
 
 📊 Статистика:
-• Время выполнения: 2.5 сек
-• Использовано токенов: ~150
-• Итераций: 1
+• Модель: {selected_model}
+• Время выполнения: ~{(response_data.get('usage', {}).get('total_tokens', 0) / 50):.1f} сек (оценка)
+• Использовано токенов: {response_data.get('usage', {}).get('total_tokens', 'N/A')}
 
 Статус: Готово к использованию
 """
@@ -501,6 +515,8 @@ if __name__ == "__main__":
         except Exception as e:
             self.message_queue.put(("output", f"❌ Ошибка: {str(e)}", 'error'))
             self.message_queue.put(("status", "✗ Ошибка выполнения", 'error'))
+            self.message_queue.put(("progress_stop", None, None))
+            self.message_queue.put(("enable_run", None, None))
             self.message_queue.put(("progress_stop", None, None))
             self.message_queue.put(("enable_run", None, None))
     
@@ -536,6 +552,33 @@ if __name__ == "__main__":
                 elif msg_type == "enable_run":
                     self.run_button.config(state=tk.NORMAL)
                     self.stop_button.config(state=tk.DISABLED)
+                elif msg_type == "models_loaded":
+                    # Загрузка списка моделей в combobox
+                    models = data
+                    if models:
+                        self.model_combo['values'] = models
+                        self.model_combo.set(models[0])
+                        self._update_status(f"Подключено. Найдено моделей: {len(models)}", 'success')
+                        self.connection_label.config(text="🟢 Подключено", style='Success.TLabel')
+                    else:
+                        self.model_combo['values'] = []
+                        self.model_combo.set("")
+                        self._update_status("Подключено, но моделей не найдено", 'warning')
+                elif msg_type == "connection":
+                    # Успешное подключение (устаревший формат, для совместимости)
+                    self.connection_label.config(text="🟢 Подключено", style='Success.TLabel')
+                    self._update_status("Подключение успешно", 'success')
+                elif msg_type == "connection_error":
+                    # Ошибка подключения
+                    error_msg = data
+                    self.connection_label.config(text="🔴 Ошибка", style='Error.TLabel')
+                    self.model_combo['values'] = []
+                    self.model_combo.set("")
+                    self._update_status(f"Ошибка подключения: {error_msg}", 'error')
+                    messagebox.showerror("Ошибка подключения", 
+                        f"Не удалось подключиться к LM Studio:\n{error_msg}\n\n"
+                        f"Убедитесь, что LM Studio запущен и сервер доступен по адресу:\n"
+                        f"{self.config.get('model', {}).get('base_url', 'http://localhost:1234/v1')}")
                     
         except queue.Empty:
             pass
@@ -771,36 +814,79 @@ if __name__ == "__main__":
         """Установка темы оформления."""
         style = ttk.Style()
         if theme == 'dark':
-            # Тёмная тема (требует дополнительной настройки)
-            messagebox.showinfo("Информация", "Тёмная тема будет реализована в следующей версии")
+            # Тёмная тема - используем альтернативный стиль
+            try:
+                style.theme_use('alt')
+                style.configure('.', background='#2b2b2b', foreground='white')
+                style.configure('TLabel', background='#2b2b2b', foreground='white')
+                style.configure('TButton', background='#3c3c3c', foreground='white')
+                self.root.configure(bg='#2b2b2b')
+            except Exception:
+                # Если тема недоступна, остаётся светлая
+                style.theme_use('clam')
         else:
             style.theme_use('clam')
         self.config["theme"] = theme
+        self._update_status(f"Тема: {theme}", 'info')
     
     def _show_agent_settings(self):
-        """Показ настроек агента."""
-        # Переключение на вкладку настроек
-        pass
+        """Показ настроек агента - переключение на соответствующую вкладку."""
+        # Находим индекс вкладки "Модель" и переключаемся на неё
+        for index in range(self.main_notebook.index('end')):
+            if self.main_notebook.tab(index, 'text').strip() == '🤖 Модель':
+                self.main_notebook.select(index)
+                self._update_status("Открыты настройки модели", 'info')
+                break
     
     def _show_model_manager(self):
-        """Показ менеджера моделей."""
-        # Переключение на вкладку модели
-        pass
+        """Показ менеджера моделей - переключение на вкладку модели."""
+        for index in range(self.main_notebook.index('end')):
+            if self.main_notebook.tab(index, 'text').strip() == '🤖 Модель':
+                self.main_notebook.select(index)
+                self._update_status("Открыт менеджер моделей", 'info')
+                break
     
     def _show_sandbox_config(self):
-        """Показ конфигурации песочницы."""
-        # Переключение на вкладку песочницы
-        pass
+        """Показ конфигурации песочницы - переключение на вкладку песочницы."""
+        for index in range(self.main_notebook.index('end')):
+            if self.main_notebook.tab(index, 'text').strip() == '🔒 Песочница':
+                self.main_notebook.select(index)
+                self._update_status("Открыта конфигурация песочницы", 'info')
+                break
     
     def _check_connection(self):
-        """Проверка подключения к LLM серверу."""
+        """Проверка подключения к LLM серверу и загрузка списка моделей."""
         self._update_status("Проверка подключения...", 'info')
         
         def check():
-            import time
-            time.sleep(1)
-            # Имитация проверки
-            self.message_queue.put(("connection", True, None))
+            try:
+                from lm_agent.api.lmstudio import LMStudioClient, LMStudioAPIError
+                
+                # Получаем базовый URL из настроек
+                base_url = self.config.get("model", {}).get("base_url", "http://localhost:1234/v1")
+                
+                # Создаём клиент
+                client = LMStudioClient(base_url=base_url)
+                
+                # Проверяем подключение и получаем список моделей
+                models = client.list_models(force_refresh=True)
+                
+                # Сохраняем клиент и модели
+                self.lm_client = client
+                self.available_models = [model.id for model in models.models]
+                
+                # Обновляем combobox с реальными моделями
+                self.message_queue.put(("models_loaded", self.available_models, None))
+                self.message_queue.put(("connection", True, None))
+                
+            except LMStudioAPIError as e:
+                self.lm_client = None
+                self.available_models = []
+                self.message_queue.put(("connection_error", str(e), None))
+            except Exception as e:
+                self.lm_client = None
+                self.available_models = []
+                self.message_queue.put(("connection_error", f"Ошибка: {e}", None))
         
         thread = threading.Thread(target=check, daemon=True)
         thread.start()

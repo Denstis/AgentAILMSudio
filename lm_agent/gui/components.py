@@ -193,10 +193,35 @@ class ModelSettingsFrame(ttk.LabelFrame):
     
     def _test_connection(self):
         """Проверить подключение к LLM серверу."""
-        messagebox.showinfo("Проверка подключения", 
-            "Функция проверки подключения будет реализована.\n\n"
-            f"URL: {self.base_url_var.get()}\n"
-            f"Модель: {self.model_name_var.get()}")
+        from lm_agent.api.lmstudio import LMStudioClient, LMStudioAPIError
+        
+        base_url = self.base_url_var.get()
+        model_name = self.model_name_var.get()
+        
+        try:
+            client = LMStudioClient(base_url=base_url)
+            models = client.list_models(force_refresh=True)
+            
+            available_models = [model.id for model in models.models]
+            
+            if model_name in available_models:
+                status = f"✓ Модель '{model_name}' доступна"
+            else:
+                status = f"⚠ Модель '{model_name}' не найдена\nДоступные модели:\n" + "\n".join(available_models[:10])
+            
+            messagebox.showinfo("Проверка подключения", 
+                f"✓ Подключение успешно!\n\n"
+                f"URL: {base_url}\n"
+                f"Найдено моделей: {len(available_models)}\n\n"
+                f"{status}")
+        except LMStudioAPIError as e:
+            messagebox.showerror("Ошибка подключения", 
+                f"Не удалось подключиться к серверу:\n{e}\n\n"
+                f"URL: {base_url}\n"
+                f"Убедитесь, что LM Studio запущен")
+        except Exception as e:
+            messagebox.showerror("Ошибка", 
+                f"Ошибка при проверке подключения:\n{e}")
     
     def get_settings(self) -> Dict[str, Any]:
         """Получить текущие настройки."""
@@ -694,7 +719,17 @@ class TaskManagerFrame(ttk.LabelFrame):
     
     def _new_task(self):
         """Создать новую задачу."""
-        messagebox.showinfo("Новая задача", "Диалог создания задачи будет реализован")
+        # Переключаем на вкладку рабочей области для создания задачи
+        parent = self.master
+        while parent and not hasattr(parent, 'main_notebook'):
+            parent = parent.master
+        
+        if hasattr(parent, 'main_notebook'):
+            for index in range(parent.main_notebook.index('end')):
+                if parent.main_notebook.tab(index, 'text').strip() == '📝 Рабочая область':
+                    parent.main_notebook.select(index)
+                    break
+        messagebox.showinfo("Новая задача", "Перейдите на вкладку 'Рабочая область' для создания задачи")
     
     def _run_task(self):
         """Запустить выбранную задачу."""
@@ -702,7 +737,26 @@ class TaskManagerFrame(ttk.LabelFrame):
         if not selection:
             messagebox.showwarning("Предупреждение", "Выберите задачу для запуска")
             return
-        messagebox.showinfo("Запуск", "Задача запущена")
+        
+        item = self.task_tree.item(selection[0])
+        task_id = item["values"][0]
+        task_desc = item["values"][1]
+        
+        # Переключаем на вкладку рабочей области и заполняем задачу
+        parent = self.master
+        while parent and not hasattr(parent, 'main_notebook'):
+            parent = parent.master
+        
+        if hasattr(parent, 'main_notebook'):
+            for index in range(parent.main_notebook.index('end')):
+                if parent.main_notebook.tab(index, 'text').strip() == '📝 Рабочая область':
+                    parent.main_notebook.select(index)
+                    if hasattr(parent, 'task_input'):
+                        parent.task_input.delete("1.0", tk.END)
+                        parent.task_input.insert("1.0", f"Задача #{task_id}: {task_desc}")
+                    break
+        
+        messagebox.showinfo("Запуск", f"Задача #{task_id} подготовлена к выполнению")
     
     def _stop_task(self):
         """Остановить задачу."""
@@ -710,7 +764,16 @@ class TaskManagerFrame(ttk.LabelFrame):
         if not selection:
             messagebox.showwarning("Предупреждение", "Выберите задачу для остановки")
             return
-        messagebox.showinfo("Стоп", "Задача остановлена")
+        
+        item = self.task_tree.item(selection[0])
+        task_id = item["values"][0]
+        
+        # Обновляем статус задачи на "stopped"
+        current_values = list(item["values"])
+        current_values[2] = "stopped"
+        self.task_tree.item(selection[0], values=tuple(current_values))
+        
+        messagebox.showinfo("Стоп", f"Задача #{task_id} остановлена")
     
     def _delete_task(self):
         """Удалить задачу."""
@@ -845,8 +908,37 @@ class ConsoleOutputFrame(ttk.LabelFrame):
     
     def _apply_filter(self):
         """Применить фильтр логов (перезагрузка из буфера)."""
-        # В полной реализации здесь будет фильтрация отображения
-        pass
+        # Получаем текст фильтра
+        filter_text = self.filter_var.get().lower()
+        
+        if not filter_text:
+            # Если фильтр пустой, показываем все логи
+            self.console_text.config(state=tk.NORMAL)
+            self.console_text.delete("1.0", tk.END)
+            for log_entry in self.log_buffer:
+                self._display_log_entry(log_entry)
+            self.console_text.config(state=tk.DISABLED)
+            return
+        
+        # Фильтруем логи по тексту
+        filtered_logs = [
+            log for log in self.log_buffer 
+            if filter_text in log['message'].lower() 
+            or filter_text in log['level'].lower()
+            or filter_text in log.get('source', '').lower()
+        ]
+        
+        # Обновляем отображение
+        self.console_text.config(state=tk.NORMAL)
+        self.console_text.delete("1.0", tk.END)
+        for log_entry in filtered_logs:
+            self._display_log_entry(log_entry)
+        self.console_text.config(state=tk.DISABLED)
+        
+        # Обновляем статус
+        self.status_label.config(
+            text=f"Найдено {len(filtered_logs)} из {len(self.log_buffer)} записей"
+        )
 
 
 # Экспорт всех компонентов
