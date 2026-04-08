@@ -54,7 +54,8 @@ def safe_path(path: str, base: Path) -> Optional[Path]:
             resolved = path_obj.resolve(strict=False)
             try:
                 resolved.relative_to(base_resolved)
-                return resolved
+                # Возвращаем путь с прямыми слешами для кроссплатформенности
+                return Path(str(resolved).replace('\\', '/'))
             except ValueError:
                 return None
         
@@ -64,7 +65,8 @@ def safe_path(path: str, base: Path) -> Optional[Path]:
         # Проверяем что результат внутри base
         try:
             resolved.relative_to(base_resolved)
-            return resolved
+            # Возвращаем путь с прямыми слешами для кроссплатформенности
+            return Path(str(resolved).replace('\\', '/'))
         except ValueError:
             return None
             
