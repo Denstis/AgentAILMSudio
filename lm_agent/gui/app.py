@@ -668,6 +668,10 @@ if __name__ == "__main__":
         self.output_display.delete("1.0", tk.END)
         self.output_display.config(state=tk.DISABLED)
     
+    def _clear_console(self):
+        """Очистка консоли (алиас для _clear_output)."""
+        self._clear_output()
+    
     def _copy_text(self):
         """Копирование выделенного текста."""
         try:
